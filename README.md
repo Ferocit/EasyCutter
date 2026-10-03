@@ -21,14 +21,15 @@ python -m easy_cutter video.mp4
 
 ## Bedienung
 
-- **Video laden**
+- **Video laden** oder eine Videodatei per Drag & Drop ins Fenster ziehen. Das geht auch, wenn schon ein Video geladen ist.
 - Links das ganze Video mit Abspielen/Pause und Positionsregler, rechts erster und letzter Frame des Bereichs.
 - Bereich (Default 5 s) auf dem Zeitstrahl ziehen oder neben die Auswahl klicken. Mit Fokus auf dem Zeitstrahl verschieben die Pfeiltasten um 0,1 s, mit Shift um 1 s.
 - Start und Länge lassen sich auch als Zahl eingeben.
-- **−1 Frame / +1 Frame** unter den Vorschaubildern verschieben Anfang bzw. Ende um genau einen Frame. Die jeweils andere Grenze bleibt stehen. Die Buttons werden aktiv, sobald der Frame-Index erstellt ist (beim Laden im Hintergrund).
+- **−1 Frame / +1 Frame** unter den Vorschaubildern verschieben Anfang bzw. Ende um genau einen Frame. Gedrückt halten wiederholt den Schritt (etwa 20 Frames pro Sekunde). Die jeweils andere Grenze bleibt stehen. Die Buttons werden aktiv, sobald der Frame-Index erstellt ist (beim Laden im Hintergrund).
 - **Start = aktuelle Position** übernimmt die Position des Players als Bereichsanfang.
 - **Bereich abspielen** spielt nur den gewählten Bereich.
 - **Clip speichern** exportiert als MP4 (H.264/AAC).
+- **Speichern in: Ordner wählen …** legt einen festen Zielordner fest. Clips landen dann ohne Rückfrage dort. Gibt es den Dateinamen schon, wird `_2`, `_3` usw. angehängt. **Jedes Mal fragen** schaltet zurück auf den Speichern-Dialog. Der Ordner wird in `%APPDATA%\EasyCutter\settings.json` gespeichert.
 
 Der Bereich umfasst alle Frames ab `Start` bis vor `Start + Länge`. Bei 25 fps und 3 s bis 8 s ist der letzte Frame also der bei 7,96 s. Der exportierte Clip enthält genau die Frames, die rechts angezeigt werden.
 
@@ -38,7 +39,7 @@ Der Bereich umfasst alle Frames ab `Start` bis vor `Start + Länge`. Bei 25 fps 
 - Für die Frame-Buttons werden beim Laden die echten Zeitstempel aller Frames aus dem Container gelesen (ohne Dekodieren). Dadurch stimmen die Schritte auch bei variabler Framerate. Bei sehr großen Dateien kann das einige Sekunden dauern.
 - Beim Export wird neu kodiert, damit der Schnitt nicht auf Keyframes springt. Das ist langsamer als ein Schnitt ohne Neukodierung.
 - Die Wiedergabe im Hauptfenster ist ohne Ton und dient nur der Orientierung. Der exportierte Clip enthält den Ton.
-- Kein Drag & Drop (Tkinter kann das nicht ohne Zusatzpaket).
+- Drag & Drop nutzt das Paket `tkinterdnd2`. Fehlt es, läuft die App ohne Drag & Drop weiter.
 
 ## Tests
 

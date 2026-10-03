@@ -9,9 +9,18 @@ from tkinter import filedialog, messagebox, ttk
 
 from PIL import Image, ImageTk
 
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+except ImportError:  # Ohne das Paket läuft die App weiter, nur ohne Drag & Drop
+    TkinterDnD = None
+
+from .settings import load_settings, save_settings, unique_path
 from .video import EPS, VideoReader, export_clip, frame_times
 
 DEFAULT_LENGTH = 5.0
+# Gedrückt gehaltene Frame-Buttons: Wartezeit bis zur Wiederholung, dann Abstand zwischen den Schritten
+REPEAT_DELAY_MS = 400
+REPEAT_INTERVAL_MS = 50
 # Kleiner als ein Frame, damit sich der Bereich per Frame-Buttons bis auf einen Frame verkürzen lässt
 MIN_LENGTH = 0.01
 # Vorschaubilder werden höchstens in dieser Größe dekodiert und dann auf die Fenstergröße skaliert
@@ -72,6 +81,39 @@ class FrameWorker:
                 self.results.put(('frame', self.name, path, frame))
             except Exception as e:  # noqa: BLE001 Fehler in der Oberfläche anzeigen statt den Thread zu beenden
                 self.results.put(('error', self.name, path, e))
+
+
+class RepeatButton(ttk.Button):
+    """Button, der beim Gedrückthalten `action` wiederholt auslöst."""
+
+    def __init__(self, master, action, **kwargs):
+        super().__init__(master, **kwargs)
+        self.action = action
+        self._job = None
+        self.bind('<ButtonPress-1>', self._press)
+        self.bind('<ButtonRelease-1>', self._stop)
+        self.bind('<Leave>', self._stop)
+        self.bind('<space>', lambda e: self._fire())
+
+    def _fire(self):
+        if not self.instate(['disabled']):
+            self.action()
+
+    def _press(self, event):
+        self._fire()
+        self._job = self.after(REPEAT_DELAY_MS, self._repeat)
+
+    def _repeat(self):
+        if self.instate(['disabled']):
+            self._job = None
+            return
+        self.action()
+        self._job = self.after(REPEAT_INTERVAL_MS, self._repeat)
+
+    def _stop(self, event=None):
+        if self._job:
+            self.after_cancel(self._job)
+            self._job = None
 
 
 class VideoView(tk.Canvas):
@@ -183,6 +225,8 @@ class EasyCutter:
         self.play_clock = None
         self.exporting = False
         self._setting_scale = False
+        self.settings = load_settings()
+        self.output_dir = self.settings.get('output_dir') or ''
 
         self.workers = {
             'main': FrameWorker('main', 'at', self.results),
@@ -192,6 +236,7 @@ class EasyCutter:
 
         self._build_ui()
         self._set_enabled(False)
+        self._setup_drop()
         self.root.after(POLL_MS, self._poll)
 
     # Aufbau
@@ -285,6 +330,17 @@ class EasyCutter:
                                         command=self.export)
         self.export_button.pack(side='left', padx=(8, 0), anchor='s')
 
+        target = ttk.Frame(bottom)
+        target.pack(fill='x', pady=(10, 0))
+        ttk.Label(target, text='Speichern in:', style='Muted.TLabel').pack(side='left')
+        ttk.Button(target, text='Ordner wählen …', command=self.choose_output_dir).pack(side='left', padx=(8, 0))
+        self.clear_output_button = ttk.Button(target, text='Jedes Mal fragen', command=self.clear_output_dir)
+        self.clear_output_button.pack(side='left', padx=(8, 0))
+        # Nach den Buttons, damit ein langer Pfad sie nicht aus dem Fenster schiebt
+        self.output_label = ttk.Label(target, text='')
+        self.output_label.pack(side='left', padx=(12, 0))
+        self._show_output_dir()
+
         self.progress = ttk.Progressbar(bottom, maximum=1.0)
         self.status = ttk.Label(bottom, text='', style='Muted.TLabel')
         self.status.pack(fill='x', pady=(10, 0))
@@ -299,9 +355,9 @@ class EasyCutter:
         # Vor dem Bild packen, damit die Buttons bei wenig Platz nicht weggedrückt werden
         row = ttk.Frame(master, style='Panel.TFrame')
         row.pack(side='bottom', fill='x', pady=(8, 0))
-        back = ttk.Button(row, text='◀ −1 Frame', command=lambda: on_step(-1))
+        back = RepeatButton(row, lambda: on_step(-1), text='◀ −1 Frame')
         back.pack(side='left')
-        forward = ttk.Button(row, text='+1 Frame ▶', command=lambda: on_step(1))
+        forward = RepeatButton(row, lambda: on_step(1), text='+1 Frame ▶')
         forward.pack(side='left', padx=(8, 0))
         return [back, forward]
 
@@ -337,6 +393,21 @@ class EasyCutter:
         )
         if path:
             self.load(path)
+
+    def _setup_drop(self):
+        if TkinterDnD is None or not hasattr(self.root, 'drop_target_register'):
+            return
+        # Am Hauptfenster registriert, gilt der Drop für alle Bereiche darin
+        self.root.drop_target_register(DND_FILES)
+        self.root.dnd_bind('<<Drop>>', self._on_drop)
+        self.file_label.configure(text='Kein Video geladen – Datei hierher ziehen')
+
+    def _on_drop(self, event):
+        # Pfade kommen als Tcl-Liste, Pfade mit Leerzeichen in geschweiften Klammern
+        paths = self.root.tk.splitlist(event.data)
+        if paths:
+            self.root.after_idle(lambda: self.load(paths[0]))
+        return event.action
 
     def load(self, path):
         self.pause()
@@ -499,6 +570,33 @@ class EasyCutter:
 
     # Export
 
+    def choose_output_dir(self):
+        folder = filedialog.askdirectory(title='Ordner für Clips', initialdir=self.output_dir or None,
+                                         mustexist=False)
+        if folder:
+            self._set_output_dir(folder)
+
+    def clear_output_dir(self):
+        self._set_output_dir('')
+
+    def _set_output_dir(self, folder):
+        self.output_dir = folder
+        self.settings['output_dir'] = folder
+        try:
+            save_settings(self.settings)
+        except OSError as e:
+            self.set_status(f'Einstellungen konnten nicht gespeichert werden: {e}')
+        self._show_output_dir()
+
+    def _show_output_dir(self):
+        if self.output_dir:
+            self.output_label.configure(text=os.path.normpath(self.output_dir), style='TLabel')
+            self.clear_output_button.state(['!disabled'])
+        else:
+            self.output_label.configure(text='Kein Ordner gewählt, Speicherort wird jedes Mal abgefragt',
+                                        style='Muted.TLabel')
+            self.clear_output_button.state(['disabled'])
+
     def export(self):
         if not self.path or self.exporting:
             return
@@ -506,10 +604,19 @@ class EasyCutter:
         end = self.start + self.length
         stamp = lambda t: f'{t:.2f}'.replace('.', '_')  # noqa: E731
         name = f'{base}_{stamp(self.start)}-{stamp(end)}.mp4'
-        output = filedialog.asksaveasfilename(
-            title='Clip speichern', initialdir=os.path.dirname(self.path), initialfile=name,
-            defaultextension='.mp4', filetypes=[('MP4', '*.mp4')],
-        )
+        if self.output_dir:
+            try:
+                os.makedirs(self.output_dir, exist_ok=True)
+            except OSError as e:
+                messagebox.showerror('Easy Cutter', f'Der Ordner kann nicht angelegt werden:\n{e}')
+                return
+            # Ohne Rückfrage speichern, vorhandene Clips aber nie überschreiben
+            output = unique_path(os.path.join(self.output_dir, name))
+        else:
+            output = filedialog.asksaveasfilename(
+                title='Clip speichern', initialdir=os.path.dirname(self.path), initialfile=name,
+                defaultextension='.mp4', filetypes=[('MP4', '*.mp4')],
+            )
         if not output:
             return
         if os.path.abspath(output) == os.path.abspath(self.path):
@@ -590,7 +697,10 @@ class EasyCutter:
 
 
 def main():
-    root = tk.Tk()
+    try:
+        root = TkinterDnD.Tk() if TkinterDnD else tk.Tk()
+    except (RuntimeError, tk.TclError):  # tkdnd-Bibliothek für diese Plattform nicht ladbar
+        root = tk.Tk()
     app = EasyCutter(root)
     if len(sys.argv) > 1:
         root.after(100, lambda: app.load(sys.argv[1]))
