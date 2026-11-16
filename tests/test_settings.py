@@ -8,9 +8,9 @@ def test_settings_roundtrip(tmp_path):
 
 
 def test_missing_or_broken_settings(tmp_path):
-    assert load_settings(str(tmp_path / 'fehlt.json')) == {}
-    broken = tmp_path / 'kaputt.json'
-    broken.write_text('{nicht json', encoding='utf-8')
+    assert load_settings(str(tmp_path / 'missing.json')) == {}
+    broken = tmp_path / 'broken.json'
+    broken.write_text('{not json', encoding='utf-8')
     assert load_settings(str(broken)) == {}
 
 

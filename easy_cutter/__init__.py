@@ -1,1 +1,1 @@
-"""Easy Cutter: einen Bereich aus einem Video framegenau als Clip speichern."""
+"""Easy Cutter: save a range of a video as a frame-accurate clip."""

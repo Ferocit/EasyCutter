@@ -11,19 +11,19 @@ from PIL import Image, ImageTk
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
-except ImportError:  # Ohne das Paket läuft die App weiter, nur ohne Drag & Drop
+except ImportError:  # Without the package the app still runs, just without drag & drop
     TkinterDnD = None
 
 from .settings import load_settings, save_settings, unique_path
 from .video import EPS, VideoReader, export_clip, frame_times
 
 DEFAULT_LENGTH = 5.0
-# Gedrückt gehaltene Frame-Buttons: Wartezeit bis zur Wiederholung, dann Abstand zwischen den Schritten
+# Held-down frame buttons: delay before repeating, then interval between steps
 REPEAT_DELAY_MS = 400
 REPEAT_INTERVAL_MS = 50
-# Kleiner als ein Frame, damit sich der Bereich per Frame-Buttons bis auf einen Frame verkürzen lässt
+# Smaller than one frame so the frame buttons can shrink the range down to a single frame
 MIN_LENGTH = 0.01
-# Vorschaubilder werden höchstens in dieser Größe dekodiert und dann auf die Fenstergröße skaliert
+# Preview images are decoded at most at this size and then scaled to the window
 PREVIEW_SIZE = (1280, 720)
 POLL_MS = 20
 
@@ -45,11 +45,11 @@ def format_time(seconds):
 
 
 class FrameWorker:
-    """Dekodiert Standbilder im Hintergrund. Nur die jeweils letzte Anfrage wird bearbeitet."""
+    """Decodes still frames in the background. Only the most recent request is processed."""
 
     def __init__(self, name, mode, results):
         self.name = name
-        self.mode = mode  # 'at': erster Frame >= t, 'before': letzter Frame < t
+        self.mode = mode  # 'at': first frame >= t, 'before': last frame < t
         self.results = results
         self._cond = threading.Condition()
         self._request = None
@@ -79,12 +79,12 @@ class FrameWorker:
                     av_frame = reader.last_frame_before(t)
                 frame = reader.to_frame(av_frame, PREVIEW_SIZE) if av_frame else None
                 self.results.put(('frame', self.name, path, frame))
-            except Exception as e:  # noqa: BLE001 Fehler in der Oberfläche anzeigen statt den Thread zu beenden
+            except Exception as e:  # noqa: BLE001 show errors in the UI instead of ending the thread
                 self.results.put(('error', self.name, path, e))
 
 
 class RepeatButton(ttk.Button):
-    """Button, der beim Gedrückthalten `action` wiederholt auslöst."""
+    """Button that repeats `action` while held down."""
 
     def __init__(self, master, action, **kwargs):
         super().__init__(master, **kwargs)
@@ -117,7 +117,7 @@ class RepeatButton(ttk.Button):
 
 
 class VideoView(tk.Canvas):
-    """Zeigt ein Bild seitenverhältnistreu eingepasst an."""
+    """Shows an image fitted to the canvas, keeping its aspect ratio."""
 
     def __init__(self, master):
         super().__init__(master, bg='black', highlightthickness=0, width=160, height=90)
@@ -239,7 +239,7 @@ class EasyCutter:
         self._setup_drop()
         self.root.after(POLL_MS, self._poll)
 
-    # Aufbau
+    # Layout
 
     def _build_ui(self):
         root = self.root
@@ -269,8 +269,8 @@ class EasyCutter:
         header = ttk.Frame(root, padding=(16, 10))
         header.pack(fill='x')
         ttk.Label(header, text='Easy Cutter', font=('TkDefaultFont', 15, 'bold')).pack(side='left')
-        ttk.Button(header, text='Video laden', command=self.open_dialog).pack(side='left', padx=16)
-        self.file_label = ttk.Label(header, text='Kein Video geladen', style='Muted.TLabel')
+        ttk.Button(header, text='Open video', command=self.open_dialog).pack(side='left', padx=16)
+        self.file_label = ttk.Label(header, text='No video loaded', style='Muted.TLabel')
         self.file_label.pack(side='left')
 
         body = ttk.Frame(root, padding=(16, 0))
@@ -286,20 +286,20 @@ class EasyCutter:
         self.main_view.pack(fill='both', expand=True)
         player = ttk.Frame(main_panel, style='Panel.TFrame')
         player.pack(fill='x', pady=(8, 0))
-        self.play_button = ttk.Button(player, text='▶ Abspielen', width=12, command=self.toggle_play)
+        self.play_button = ttk.Button(player, text='▶ Play', width=12, command=self.toggle_play)
         self.play_button.pack(side='left')
         self.position_label = ttk.Label(player, text=format_time(0), style='Panel.TLabel', width=10)
         self.position_label.pack(side='right')
         self.scale = ttk.Scale(player, from_=0, to=1, command=self._on_scale)
         self.scale.pack(side='left', fill='x', expand=True, padx=12)
 
-        start_panel, self.start_caption = self._panel(body, 'Erster Frame')
+        start_panel, self.start_caption = self._panel(body, 'First frame')
         start_panel.grid(row=0, column=1, sticky='nsew', pady=(0, 6))
         self.step_buttons = self._step_buttons(start_panel, self.step_start)
         self.start_view = VideoView(start_panel)
         self.start_view.pack(fill='both', expand=True)
 
-        end_panel, self.end_caption = self._panel(body, 'Letzter Frame')
+        end_panel, self.end_caption = self._panel(body, 'Last frame')
         end_panel.grid(row=1, column=1, sticky='nsew', pady=(6, 0))
         self.step_buttons += self._step_buttons(end_panel, self.step_end)
         self.end_view = VideoView(end_panel)
@@ -320,23 +320,23 @@ class EasyCutter:
         self.start_var = tk.StringVar(value='0.000')
         self.length_var = tk.StringVar(value=f'{DEFAULT_LENGTH:.3f}')
         self.start_spin = self._spinbox(controls, 'Start (s)', self.start_var, self._on_start_entry)
-        self.length_spin = self._spinbox(controls, 'Länge (s)', self.length_var, self._on_length_entry)
-        self.from_pos_button = ttk.Button(controls, text='Start = aktuelle Position',
+        self.length_spin = self._spinbox(controls, 'Length (s)', self.length_var, self._on_length_entry)
+        self.from_pos_button = ttk.Button(controls, text='Start = current position',
                                           command=lambda: self.set_range(self.position))
         self.from_pos_button.pack(side='left', padx=(12, 0), anchor='s')
-        self.range_button = ttk.Button(controls, text='Bereich abspielen', command=self.play_range)
+        self.range_button = ttk.Button(controls, text='Play range', command=self.play_range)
         self.range_button.pack(side='left', padx=(8, 0), anchor='s')
-        self.export_button = ttk.Button(controls, text='Clip speichern', style='Accent.TButton',
+        self.export_button = ttk.Button(controls, text='Save clip', style='Accent.TButton',
                                         command=self.export)
         self.export_button.pack(side='left', padx=(8, 0), anchor='s')
 
         target = ttk.Frame(bottom)
         target.pack(fill='x', pady=(10, 0))
-        ttk.Label(target, text='Speichern in:', style='Muted.TLabel').pack(side='left')
-        ttk.Button(target, text='Ordner wählen …', command=self.choose_output_dir).pack(side='left', padx=(8, 0))
-        self.clear_output_button = ttk.Button(target, text='Jedes Mal fragen', command=self.clear_output_dir)
+        ttk.Label(target, text='Save to:', style='Muted.TLabel').pack(side='left')
+        ttk.Button(target, text='Choose folder …', command=self.choose_output_dir).pack(side='left', padx=(8, 0))
+        self.clear_output_button = ttk.Button(target, text='Ask every time', command=self.clear_output_dir)
         self.clear_output_button.pack(side='left', padx=(8, 0))
-        # Nach den Buttons, damit ein langer Pfad sie nicht aus dem Fenster schiebt
+        # After the buttons so a long path does not push them out of the window
         self.output_label = ttk.Label(target, text='')
         self.output_label.pack(side='left', padx=(12, 0))
         self._show_output_dir()
@@ -352,7 +352,7 @@ class EasyCutter:
         return frame, caption
 
     def _step_buttons(self, master, on_step):
-        # Vor dem Bild packen, damit die Buttons bei wenig Platz nicht weggedrückt werden
+        # Pack before the image so the buttons are not squeezed out when space is tight
         row = ttk.Frame(master, style='Panel.TFrame')
         row.pack(side='bottom', fill='x', pady=(8, 0))
         back = RepeatButton(row, lambda: on_step(-1), text='◀ −1 Frame')
@@ -384,12 +384,12 @@ class EasyCutter:
     def set_status(self, text):
         self.status.configure(text=text)
 
-    # Video laden
+    # Loading a video
 
     def open_dialog(self):
         path = filedialog.askopenfilename(
-            title='Video laden',
-            filetypes=[('Videos', '*.mp4 *.mov *.mkv *.avi *.webm *.m4v *.mts *.wmv'), ('Alle Dateien', '*')],
+            title='Open video',
+            filetypes=[('Videos', '*.mp4 *.mov *.mkv *.avi *.webm *.m4v *.mts *.wmv'), ('All files', '*')],
         )
         if path:
             self.load(path)
@@ -397,13 +397,13 @@ class EasyCutter:
     def _setup_drop(self):
         if TkinterDnD is None or not hasattr(self.root, 'drop_target_register'):
             return
-        # Am Hauptfenster registriert, gilt der Drop für alle Bereiche darin
+        # Registered on the main window, so dropping works anywhere inside it
         self.root.drop_target_register(DND_FILES)
         self.root.dnd_bind('<<Drop>>', self._on_drop)
-        self.file_label.configure(text='Kein Video geladen – Datei hierher ziehen')
+        self.file_label.configure(text='No video loaded – drop a file here')
 
     def _on_drop(self, event):
-        # Pfade kommen als Tcl-Liste, Pfade mit Leerzeichen in geschweiften Klammern
+        # Paths arrive as a Tcl list, paths with spaces wrapped in curly braces
         paths = self.root.tk.splitlist(event.data)
         if paths:
             self.root.after_idle(lambda: self.load(paths[0]))
@@ -416,7 +416,7 @@ class EasyCutter:
             duration = reader.duration
             reader.close()
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror('Easy Cutter', f'Das Video kann nicht geöffnet werden:\n{e}')
+            messagebox.showerror('Easy Cutter', f'Cannot open the video:\n{e}')
             return
         self.path = path
         self.duration = duration
@@ -435,7 +435,7 @@ class EasyCutter:
         self.seek(0.0)
         self.set_range(0.0, DEFAULT_LENGTH)
 
-    # Bereich
+    # Range
 
     def set_range(self, start, length=None):
         if not self.duration:
@@ -453,7 +453,7 @@ class EasyCutter:
         self.workers['end'].request(self.path, self.start + self.length)
 
     def _on_start_entry(self):
-        # Unveränderten Text nicht neu übernehmen: Die Rundung auf 3 Stellen könnte sonst einen Frame verschieben
+        # Ignore unchanged text: rounding to 3 decimals could otherwise shift the range by a frame
         if self.start_var.get() == f'{self.start:.3f}':
             return
         try:
@@ -470,14 +470,14 @@ class EasyCutter:
             self.set_range(self.start)
 
     def _frame_indices(self):
-        """Index des ersten und des letzten Frames im aktuellen Bereich."""
+        """Indices of the first and last frame in the current range."""
         ft = self.frame_times
         first = bisect.bisect_left(ft, self.start - EPS)
         last = bisect.bisect_left(ft, self.start + self.length - EPS) - 1
         return min(first, len(ft) - 1), max(last, 0)
 
     def step_start(self, step):
-        """Verschiebt den Anfang um `step` Frames. Das Ende bleibt stehen."""
+        """Move the start by `step` frames. The end stays where it is."""
         if not self.frame_times:
             return
         first, last = self._frame_indices()
@@ -486,17 +486,17 @@ class EasyCutter:
         self.set_range(self.frame_times[first], end - self.frame_times[first])
 
     def step_end(self, step):
-        """Verschiebt das Ende um `step` Frames. Der Anfang bleibt stehen."""
+        """Move the end by `step` frames. The start stays where it is."""
         if not self.frame_times:
             return
         ft = self.frame_times
         first, last = self._frame_indices()
         last = min(max(last + step, first), len(ft) - 1)
-        # Das Ende liegt auf dem Folgeframe, der damit gerade nicht mehr zum Bereich gehört
+        # The end sits on the following frame, which is then just outside the range
         end = ft[last + 1] if last + 1 < len(ft) else max(self.duration, ft[last] + EPS * 10)
         self.set_range(self.start, end - self.start)
 
-    # Hauptfenster: Position und Wiedergabe
+    # Main view: position and playback
 
     def _show_position(self, t):
         self.position = t
@@ -545,14 +545,14 @@ class EasyCutter:
         self.play_iter = None
         self.play_reader.close()
         self.play_reader = None
-        self.play_button.configure(text='▶ Abspielen')
+        self.play_button.configure(text='▶ Play')
 
     def _play_tick(self):
         if not self.playing:
             return
         reader = self.play_reader
         av_frame = next(self.play_iter, None)
-        # Frames vor der Startposition (ab dem Keyframe) überspringen
+        # Skip frames before the start position (decoding starts at a keyframe)
         while av_frame is not None and reader.time_of(av_frame) < self.play_from - EPS:
             av_frame = next(self.play_iter, None)
         if av_frame is None or (self.play_until is not None and reader.time_of(av_frame) >= self.play_until - EPS):
@@ -571,7 +571,7 @@ class EasyCutter:
     # Export
 
     def choose_output_dir(self):
-        folder = filedialog.askdirectory(title='Ordner für Clips', initialdir=self.output_dir or None,
+        folder = filedialog.askdirectory(title='Folder for clips', initialdir=self.output_dir or None,
                                          mustexist=False)
         if folder:
             self._set_output_dir(folder)
@@ -585,7 +585,7 @@ class EasyCutter:
         try:
             save_settings(self.settings)
         except OSError as e:
-            self.set_status(f'Einstellungen konnten nicht gespeichert werden: {e}')
+            self.set_status(f'Could not save settings: {e}')
         self._show_output_dir()
 
     def _show_output_dir(self):
@@ -593,7 +593,7 @@ class EasyCutter:
             self.output_label.configure(text=os.path.normpath(self.output_dir), style='TLabel')
             self.clear_output_button.state(['!disabled'])
         else:
-            self.output_label.configure(text='Kein Ordner gewählt, Speicherort wird jedes Mal abgefragt',
+            self.output_label.configure(text='No folder chosen, you will be asked where to save each time',
                                         style='Muted.TLabel')
             self.clear_output_button.state(['disabled'])
 
@@ -608,25 +608,25 @@ class EasyCutter:
             try:
                 os.makedirs(self.output_dir, exist_ok=True)
             except OSError as e:
-                messagebox.showerror('Easy Cutter', f'Der Ordner kann nicht angelegt werden:\n{e}')
+                messagebox.showerror('Easy Cutter', f'Cannot create the folder:\n{e}')
                 return
-            # Ohne Rückfrage speichern, vorhandene Clips aber nie überschreiben
+            # Save without asking, but never overwrite existing clips
             output = unique_path(os.path.join(self.output_dir, name))
         else:
             output = filedialog.asksaveasfilename(
-                title='Clip speichern', initialdir=os.path.dirname(self.path), initialfile=name,
+                title='Save clip', initialdir=os.path.dirname(self.path), initialfile=name,
                 defaultextension='.mp4', filetypes=[('MP4', '*.mp4')],
             )
         if not output:
             return
         if os.path.abspath(output) == os.path.abspath(self.path):
-            messagebox.showerror('Easy Cutter', 'Der Clip darf das Originalvideo nicht überschreiben.')
+            messagebox.showerror('Easy Cutter', 'The clip must not overwrite the original video.')
             return
         self.exporting = True
         self.export_button.state(['disabled'])
         self.progress['value'] = 0
         self.progress.pack(fill='x', pady=(10, 0), before=self.status)
-        self.set_status('Schneide Clip …')
+        self.set_status('Cutting clip …')
         args = (self.path, output, self.start, end)
         threading.Thread(target=self._export_worker, args=args, daemon=True).start()
 
@@ -649,7 +649,7 @@ class EasyCutter:
         self.progress.pack_forget()
         self._set_enabled(bool(self.path))
 
-    # Ergebnisse aus Hintergrundthreads
+    # Results from background threads
 
     def _poll(self):
         try:
@@ -670,14 +670,14 @@ class EasyCutter:
                     self.main_view.show(frame.image)
             elif name == 'start':
                 self.start_view.show(frame.image)
-                self.start_caption.configure(text=f'Erster Frame   {format_time(frame.time)}')
+                self.start_caption.configure(text=f'First frame   {format_time(frame.time)}')
             elif name == 'end':
                 self.end_view.show(frame.image)
-                self.end_caption.configure(text=f'Letzter Frame   {format_time(frame.time)}')
+                self.end_caption.configure(text=f'Last frame   {format_time(frame.time)}')
         elif kind == 'error':
             _, name, path, err = msg
             if path == self.path:
-                self.set_status(f'Fehler beim Dekodieren: {err}')
+                self.set_status(f'Decoding error: {err}')
         elif kind == 'frame_times':
             _, path, times = msg
             if path == self.path and times:
@@ -688,18 +688,18 @@ class EasyCutter:
         elif kind == 'export_done':
             _, output, first, last = msg
             self._export_finished()
-            self.set_status(f'Gespeichert: {os.path.basename(output)}   '
-                            f'(Frames {format_time(first)} bis {format_time(last)})')
+            self.set_status(f'Saved: {os.path.basename(output)}   '
+                            f'(frames {format_time(first)} to {format_time(last)})')
         elif kind == 'export_error':
             self._export_finished()
-            self.set_status('Export fehlgeschlagen.')
+            self.set_status('Export failed.')
             messagebox.showerror('Easy Cutter', str(msg[1]))
 
 
 def main():
     try:
         root = TkinterDnD.Tk() if TkinterDnD else tk.Tk()
-    except (RuntimeError, tk.TclError):  # tkdnd-Bibliothek für diese Plattform nicht ladbar
+    except (RuntimeError, tk.TclError):  # tkdnd library cannot be loaded on this platform
         root = tk.Tk()
     app = EasyCutter(root)
     if len(sys.argv) > 1:

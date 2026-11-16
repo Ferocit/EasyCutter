@@ -24,7 +24,7 @@ def save_settings(settings, path=None):
 
 
 def unique_path(path):
-    """Gibt `path` zurück oder, falls die Datei schon existiert, `name_2.ext`, `name_3.ext` usw."""
+    """Return `path`, or `name_2.ext`, `name_3.ext` etc. if the file already exists."""
     base, ext = os.path.splitext(path)
     n = 2
     while os.path.exists(path):

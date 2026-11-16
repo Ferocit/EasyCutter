@@ -11,8 +11,8 @@ FPS = 25
 
 @pytest.fixture(scope='module')
 def video(tmp_path_factory):
-    # 20 s Testvideo mit Ton und nur zwei Keyframes (0 s und 10 s), damit ein Schnitt
-    # auf Keyframes sofort auffallen würde
+    # 20 s test video with audio and only two keyframes (0 s and 10 s), so a cut that
+    # snaps to keyframes would show up immediately
     path = str(tmp_path_factory.mktemp('video') / 'test.mp4')
     subprocess.run([
         ffmpeg_exe(), '-y', '-loglevel', 'error',
@@ -43,7 +43,7 @@ def test_preview_frames(video, start):
     reader = VideoReader(video)
     first, last = reader.resolve_range(start, start + 5)
     reader.close()
-    expected_first = -(-start * FPS // 1) / FPS  # erster Frame >= start
+    expected_first = -(-start * FPS // 1) / FPS  # first frame >= start
     assert first == pytest.approx(expected_first, abs=1e-6)
     assert last < start + 5
     assert last + 1 / FPS >= start + 5 - 1e-6
@@ -64,7 +64,7 @@ def test_export_matches_preview(video, tmp_path, start):
     src_last = src.last_frame_before(start + 5).to_image()
     neighbour = src.first_frame_at(start + 5).to_image()
     src.close()
-    # Kodierverlust ist klein, ein Nachbarframe unterscheidet sich deutlich (testsrc2 bewegt sich)
+    # Encoding loss is small, a neighbouring frame differs clearly (testsrc2 is moving)
     assert diff(clip[0], src_first) < 3
     assert diff(clip[-1], src_last) < 3
     assert diff(clip[-1], neighbour) > diff(clip[-1], src_last) + 1
@@ -85,7 +85,7 @@ def test_frame_times_mp4(video):
 
 
 def test_frame_times_match_decoder_webm(tmp_path):
-    # WebM speichert Zeitstempel in Millisekunden, bei 29,97 fps liegen sie also neben dem idealen Raster
+    # WebM stores timestamps in milliseconds, so at 29.97 fps they are off the ideal grid
     path = str(tmp_path / 'test.webm')
     subprocess.run([
         ffmpeg_exe(), '-y', '-loglevel', 'error',
@@ -95,7 +95,7 @@ def test_frame_times_match_decoder_webm(tmp_path):
     times = frame_times(path)
     assert times == pytest.approx(decoded_times(path), abs=1e-9)
     reader = VideoReader(path)
-    # Jeder Index-Zeitstempel muss als Start genau seinen eigenen Frame liefern
+    # Every index timestamp used as start must return exactly its own frame
     for t in times[40:50]:
         assert reader.time_of(reader.first_frame_at(t)) == pytest.approx(t, abs=1e-9)
     reader.close()

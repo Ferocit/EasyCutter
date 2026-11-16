@@ -1,7 +1,7 @@
-"""Frames lesen und Clips exportieren.
+"""Read frames and export clips.
 
-Alle Zeiten in diesem Modul sind Sekunden ab dem ersten Videoframe (0 = Videoanfang),
-unabhängig davon, mit welchem Zeitstempel der Container startet.
+All times in this module are seconds from the first video frame (0 = start of video),
+regardless of the timestamp the container starts with.
 """
 
 import re
@@ -12,9 +12,9 @@ from dataclasses import dataclass
 
 import av
 
-# Toleranz für Rundungsfehler beim Vergleich von Frame-Zeitstempeln
+# Tolerance for rounding errors when comparing frame timestamps
 EPS = 1e-6
-# Abstand zum Frame-Zeitstempel beim Export. Deutlich kleiner als ein Frame (8 ms bei 120 fps).
+# Margin around frame timestamps when exporting. Well below one frame (8 ms at 120 fps).
 EXPORT_MARGIN = 0.001
 
 
@@ -25,7 +25,7 @@ class Frame:
 
 
 class VideoReader:
-    """Framegenauer Zugriff auf den ersten Videostream einer Datei. Nicht threadsicher."""
+    """Frame-accurate access to the first video stream of a file. Not thread-safe."""
 
     def __init__(self, path):
         self.path = path
@@ -39,7 +39,7 @@ class VideoReader:
         elif self.container.duration is not None:
             self.duration = self.container.duration / av.time_base - self.offset
         else:
-            raise ValueError('Die Videolänge kann nicht ermittelt werden.')
+            raise ValueError('Cannot determine the video duration.')
         self.width = self.stream.codec_context.width
         self.height = self.stream.codec_context.height
 
@@ -50,7 +50,7 @@ class VideoReader:
         return float(frame.time) - self.offset
 
     def frames_from(self, t):
-        """Liefert Frames ab dem letzten Frame mit Zeit <= t (soweit vorhanden) in Abspielreihenfolge."""
+        """Yield frames in presentation order, starting at the last frame with time <= t (if any)."""
         back = 0.0
         while True:
             target = max(t - back, 0.0)
@@ -60,7 +60,7 @@ class VideoReader:
             first = next(frames, None)
             if first is None:
                 return
-            # Manche Container springen hinter das Ziel. Dann weiter vorne erneut ansetzen.
+            # Some containers seek past the target. In that case retry further back.
             if self.time_of(first) <= t + EPS or target == 0.0:
                 yield first
                 yield from frames
@@ -68,7 +68,7 @@ class VideoReader:
             back = back * 2 or 0.5
 
     def first_frame_at(self, t):
-        """Erster Frame mit Zeit >= t, oder der letzte Frame des Videos."""
+        """First frame with time >= t, or the last frame of the video."""
         last = None
         for f in self.frames_from(t):
             last = f
@@ -77,7 +77,7 @@ class VideoReader:
         return last
 
     def last_frame_before(self, t):
-        """Letzter Frame mit Zeit < t."""
+        """Last frame with time < t."""
         last = None
         for f in self.frames_from(t - EXPORT_MARGIN):
             if self.time_of(f) >= t - EPS:
@@ -86,7 +86,7 @@ class VideoReader:
         return last
 
     def to_frame(self, av_frame, max_size=None):
-        """Wandelt einen PyAV-Frame in ein Bild, optional verkleinert auf max_size (Breite, Höhe)."""
+        """Convert a PyAV frame to an image, optionally scaled down to max_size (width, height)."""
         kwargs = {}
         if max_size:
             scale = min(max_size[0] / av_frame.width, max_size[1] / av_frame.height)
@@ -95,22 +95,22 @@ class VideoReader:
         return Frame(self.time_of(av_frame), av_frame.to_image(**kwargs))
 
     def resolve_range(self, start, end):
-        """Zeiten des ersten und letzten Frames im Bereich [start, end)."""
+        """Times of the first and last frame in the range [start, end)."""
         first = self.first_frame_at(start)
         last = self.last_frame_before(end)
         if first is None or last is None or self.time_of(last) < self.time_of(first):
-            raise ValueError('Im gewählten Bereich liegt kein Frame.')
+            raise ValueError('There is no frame in the selected range.')
         return self.time_of(first), self.time_of(last)
 
 
 def frame_times(path):
-    """Sortierte Zeiten aller Videoframes. Liest nur die Pakete, ohne zu dekodieren."""
+    """Sorted times of all video frames. Only reads packets, does not decode."""
     with av.open(path) as container:
         stream = container.streams.video[0]
         tb = stream.time_base
         offset = stream.start_time if stream.start_time is not None else 0
         times = [float((p.pts - offset) * tb) for p in container.demux(stream) if p.pts is not None and p.size]
-    # Vom Decoder verworfene Frames vor dem Videoanfang (Edit-Lists) weglassen
+    # Drop frames before the start of the video that the decoder discards (edit lists)
     return sorted(t for t in times if t >= -EPS)
 
 
@@ -124,10 +124,10 @@ def ffmpeg_exe():
 
 
 def export_clip(path, output, start, end, on_progress=None):
-    """Exportiert die Frames im Bereich [start, end) als MP4 (H.264/AAC).
+    """Export the frames in the range [start, end) as MP4 (H.264/AAC).
 
-    Es wird neu kodiert, damit der Schnitt framegenau ist und nicht auf Keyframes springt.
-    Gibt die Zeiten des ersten und letzten exportierten Frames zurück.
+    The video is re-encoded so the cut is frame-accurate instead of snapping to keyframes.
+    Returns the times of the first and last exported frame.
     """
     reader = VideoReader(path)
     try:
@@ -136,7 +136,7 @@ def export_clip(path, output, start, end, on_progress=None):
     finally:
         reader.close()
 
-    # Knapp vor den ersten und knapp hinter den letzten Frame schneiden, damit Rundung keinen Frame kostet
+    # Cut just before the first and just after the last frame so rounding never drops a frame
     ss = max(first + offset - EXPORT_MARGIN, 0.0)
     duration = last + offset + EXPORT_MARGIN - ss
     cmd = [
@@ -170,5 +170,5 @@ def export_clip(path, output, start, end, on_progress=None):
     drain.join()
     stderr = ''.join(stderr_lines[-30:])
     if proc.wait() != 0:
-        raise RuntimeError(f'ffmpeg ist fehlgeschlagen:\n{stderr.strip()}')
+        raise RuntimeError(f'ffmpeg failed:\n{stderr.strip()}')
     return first, last
